@@ -1,4 +1,3 @@
-from rtlsdr import RtlSdr
 # chacha20
 
 
@@ -30,6 +29,9 @@ def create_matrix(key :bytes, nonce :bytes, count :int) -> List:
 
 # 2. Quarter round
 
+def rotl32(x, n):
+    return ((x << n) & 0xffffffff) | (x >> (32 - n))
+
 def uprava_indexu(matice :list, index0 :int, index1 :int, index2 :int, index3 :int):
 
     # ARX 
@@ -54,7 +56,7 @@ def uprava_indexu(matice :list, index0 :int, index1 :int, index2 :int, index3 :i
 
 # 3. chacha2 blockn
 
-def chacha(key :bytes, nonce :bytes, count :int):
+def chacha(klic :bytes, nonce :bytes, count :int):
 
     matr = create_matrix(klic, nonce, count)
     matr_cp = list(matr)
@@ -69,19 +71,63 @@ def chacha(key :bytes, nonce :bytes, count :int):
 
     # secteni s puvodnimi hodnotami s modulem!
 
+    vysledek = bytearray()
     for i in range(0, len(matr)):
         matr[i] = matr[i] + matr_cp[i] & 0xffffffff
 
-        matr[i].to_bytes(4, "little")
+    for cislo in matr:
+        vysledek.extend(cislo.to_bytes(4, "little"))
 
-    return matr
+    return vysledek
 
 # 4. (De)sifrovani
+
+def sifrovani(klic, zprava):
+    
+    zasifrovany_text = bytearray()
+    for i in range(0, len(zprava)):
+        zasifrovany_text.append(zprava[i] ^ klic[i])
+
+    return bytes(zasifrovany_text)
+
+
+# MAIN --------------------------------------------------
+
+count = 1
+uz_input = ""
+uz_input = input("Zadejte text k šifrování: ")
+zprava = uz_input.encode('utf-8')
+
+if (len(zprava)) >= 64:
+    if len(zprava) % 64  == 0:
+        rozdil = len(zprava) / 64
+        count += rozdil
+    else:
+        count += (len(zprava) // 64) + 1 
+
 
 klic = b'\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f'
 nonce = b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02'
 
-keystream = chacha(klic, nonce, 1)
-print(f"Délka keystreamu: {len(keystream)} bajtů")
-print(f"Keystream (hex): {keystream.hex()}")
+cely_keystream = bytearray()
+for i in range(0, count):
+    kus_ks = chacha(klic, nonce, i)  
+    cely_keystream.extend(kus_ks)
+
+sifra = sifrovani(cely_keystream, zprava)
+print(f"Šifrovaný text (hex): {sifra.hex()}")
+
+desifrovany_text = sifrovani(cely_keystream, sifra)
+print(f"Dešifrovaný text: {desifrovany_text.decode('utf-8')}")
+
+"""
+klic = b'\xff\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f'
+spatny_keystream = bytearray()
+for i in range(0, count):
+    kus_ks = chacha(klic, nonce, i)  
+    spatny_keystream.extend(kus_ks)
+
+spatna_sifra = sifrovani(cely_keystream, zprava)
+print(spatna_sifra.decode('utf-8', errors='replace'))
+"""
 
